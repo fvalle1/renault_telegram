@@ -68,7 +68,7 @@ def renault_login():
         'x-gigya-id_token': jwt,
     }
 
-    response = requests.request(
+    response = session.request(
         "GET",
         KEMERON_URL +
         f"/persons/{person_id}?country=IT",
@@ -81,20 +81,13 @@ def renault_login():
     return session, person_id, account_id, jwt, headers
 
 
-def get_vin():
-    payload = {}
-    headers = {
-        'Content-Type': 'application/vnd.api+json',
-        'apikey': KAMEREON_API_KEY,
-        'x-gigya-id_token': jwt,
-    }
-
-    response = requests.request(
+def get_vin(session, headers, account_id):
+    response = session.request(
         "GET",
         KEMERON_URL +
         f"/accounts/{account_id}/vehicles?country=IT",
         headers=headers,
-        data=payload)
+        data={})
     vin = response.json()["vehicleLinks"][0]['vin']
 
     for vehicle in response.json()["vehicleLinks"]:
@@ -107,8 +100,8 @@ def get_vin():
 # https://renault-api.readthedocs.io/en/latest/endpoints.html#vehicle-data-endpoints
 
 
-def get_charging_status():
-    response = requests.request(
+def get_charging_status(session, headers, account_id, vin):
+    response = session.request(
         "GET",
         KEMERON_URL +
         f"/accounts/{account_id}/kamereon/kca/car-adapter/v2/cars/{vin}/battery-status?country=IT",
@@ -118,8 +111,8 @@ def get_charging_status():
     return response.json()
 
 
-def get_cockpit():
-    response = requests.request(
+def get_cockpit(session, headers, account_id, vin):
+    response = session.request(
         "GET",
         KEMERON_URL +
         f"/accounts/{account_id}/kamereon/kca/car-adapter/v1/cars/{vin}/cockpit?country=IT",
@@ -129,8 +122,8 @@ def get_cockpit():
     return response.json()
 
 
-def get_location():
-    response = requests.request(
+def get_location(session, headers, account_id, vin):
+    response = session.request(
         "GET",
         KEMERON_URL +
         f"/accounts/{account_id}/kamereon/kca/car-adapter/v1/cars/{vin}/location?country=IT",
@@ -153,7 +146,7 @@ def send_message(msg, parse_mode=""):
 
 if __name__ == "__main__":
     session, person_id, account_id, jwt, headers = renault_login()
-    vin = get_vin()
+    vin = get_vin(session, headers, account_id)
     while True:
         # break
         with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/getUpdates?offset={offset}") as req:
@@ -167,12 +160,17 @@ if __name__ == "__main__":
                         0.5) or (len(response["result"]) > 0):  # every 15 minutes
                     count = 0
                     try:
-                        car_state = get_charging_status()
-                        car_cockpit = get_cockpit()
+                        car_state = get_charging_status(session, headers, account_id, vin)
+                        car_cockpit = get_cockpit(session, headers, account_id, vin)
                     except Exception as e:
                         print(e)
                         session, person_id, account_id, jwt, headers = renault_login()
-                        vin = get_vin()
+                        headers = {
+                                        'Content-Type': 'application/vnd.api+json',
+                                        'apikey': KAMEREON_API_KEY,
+                                        'x-gigya-id_token': jwt,
+                                    }
+                        vin = get_vin(session, headers, account_id)
                         continue
                     battery_status = car_state["data"]["attributes"]["batteryLevel"]
                     plug_status = car_state["data"]["attributes"]["chargingStatus"]
@@ -198,7 +196,7 @@ if __name__ == "__main__":
                         totalMileage = car_cockpit["data"]["attributes"]["totalMileage"]
                         send_message(f"Total Km: {totalMileage}Km")
                     if "/location" in text:
-                        location = get_location()
+                        location = get_location(session, headers, account_id, vin)
                         lon = location["data"]["attributes"]["gpsLongitude"]
                         lat = location["data"]["attributes"]["gpsLatitude"]
                         send_message(
