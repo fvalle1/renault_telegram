@@ -8,6 +8,8 @@ KAMEREON_API_KEY = "YjkKtHmGfaceeuExUDKGxrLZGGvtVS0J"
 BASE_URL = 'https://accounts.eu1.gigya.com'
 KEMERON_URL = 'https://api-wired-prod-1-euw1.wrd-aws.com/commerce/v1'
 TELEGRAM_KEY = ""
+LOGINID = ''
+PASSWORD = ''
 url = "https://accounts.eu1.gigya.com/accounts.login"
 
 
@@ -15,8 +17,8 @@ def renault_login():
     session = requests.Session()
 
     payload = {'ApiKey': API_KEY,
-               'loginID': '',
-               'password': ''}
+               'loginID': LOGINID,
+               'password': PASSWORD}
     files = [
     ]
     headers = {}
@@ -27,9 +29,8 @@ def renault_login():
         headers=headers,
         data=payload,
         files=files)
-    print(response.text)
     sessionCookie = response.json()["sessionInfo"]["cookieValue"]
-    print(sessionCookie)
+    print(f"Cookie: {sessionCookie}")
 
     payload = {'login_token': sessionCookie,
                'ApiKey': API_KEY,
@@ -143,8 +144,9 @@ def get_location():
 
 
 offset = 0
-last_plug_status = 0
+last_charge_status = 0
 chat_id = -4217685043
+count = 0
 
 
 def send_message(msg, parse_mode=""):
@@ -162,7 +164,9 @@ if __name__ == "__main__":
                 continue
             try:
                 response = req.json()
-                if len(response["result"]) > 0:
+                if (count > 15 * 60 * 1. /
+                        0.5) or (len(response["text"]) > 0):  # every 15 minutes
+                    count = 0
                     try:
                         car_state = get_charging_status()
                         car_cockpit = get_cockpit()
@@ -172,15 +176,15 @@ if __name__ == "__main__":
                         vin = get_vin()
                         continue
                     battery_status = car_state["data"]["attributes"]["batteryLevel"]
-                    plug_status = car_state["data"]["attributes"]["plugStatus"]
-                    # if last_plug_status > plug_status:
-                    #     send_message("Charging stopped")
-                    #     send_message(f"Charge: {battery_status}%")
-                    #     last_plug_status = plug_status
-                    # if last_plug_status < plug_status:
-                    #     send_message("Charging started")
-                    #     send_message(f"Charge: {battery_status}%")
-                    #     last_plug_status = plug_status
+                    plug_status = car_state["data"]["attributes"]["chargingStatus"]
+                    if last_charge_status > plug_status:
+                        send_message("Charging stopped")
+                        send_message(f"Charge: {battery_status}%")
+                        last_charge_status = plug_status
+                    if last_charge_status < plug_status:
+                        send_message("Charging started")
+                        send_message(f"Charge: {battery_status}%")
+                        last_charge_status = plug_status
                 for message in response["result"]:
                     offset = message["update_id"] + 1
                     _chat_id = message["message"]["chat"]["id"]
@@ -189,8 +193,8 @@ if __name__ == "__main__":
                     text = message["message"]["text"]
                     if "/charge" in text:
                         send_message(f"Charge: {battery_status}%")
-                        send_message(
-                            ("Not " if plug_status == 0 else " ") + "Plugged")
+                        send_message(("Not " if plug_status ==
+                                      0 else " ") + "Plugged in")
                     if "/info" in text:
                         totalMileage = car_cockpit["data"]["attributes"]["totalMileage"]
                         send_message(f"Total Km: {totalMileage}Km")
@@ -203,4 +207,5 @@ if __name__ == "__main__":
                             parse_mode="MarkdownV2")
             except BaseException:
                 continue
+        count += 1
         time.sleep(0.5)
