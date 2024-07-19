@@ -131,36 +131,83 @@ def get_cockpit():
     return response.json()
 
 
+def get_location():
+    response = requests.request(
+        "GET",
+        KEMERON_URL +
+        f"/accounts/{account_id}/kamereon/kca/car-adapter/v1/cars/{vin}/location?country=IT",
+        headers=headers,
+        data={})
+    print(response.json())
+    return response.json()
+
+
 offset = 0
+last_plug_status = 0
 chat_id = -4217685043
 
 
-def send_message(msg):
-    with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/sendMessage?chat_id={chat_id}&text={msg}") as req:
+def send_message(msg, parse_mode=""):
+    with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/sendMessage?chat_id={chat_id}&text={msg}&parse_mode={parse_mode}") as req:
         print(req.text)
 
 
-while True:
-    with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/getUpdates?offset={offset}") as req:
-        if req.status_code != 200:
-            print("Error")
-            time.spleep(5)
-            continue
-        try:
-            response = req.json()
-            for message in response["result"]:
-                offset = message["update_id"] + 1
-                _chat_id = message["message"]["chat"]["id"]
-                if _chat_id != chat_id:
-                    continue
-                text = message["message"]["text"]
-                if text == "/charge":
+if __name__ == "__main__":
+    while True:
+        # break
+        with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/getUpdates?offset={offset}") as req:
+            if req.status_code != 200:
+                print(f"Error {req.text}")
+                time.sleep(5)
+                continue
+            try:
+                try:
                     car_state = get_charging_status()
-                    battery_status = car_state["data"]["attributes"]["batteryLevel"]
-                    plug_status = car_state["data"]["attributes"]["plugStatus"]
+                    car_cockpit = get_cockpit()
+                except Exception as e:
+                    print(e)
+                    session, person_id, account_id, jwt, headers = renault_login()
+                    vin = get_vin()
+                    continue
+                battery_status = car_state["data"]["attributes"]["batteryLevel"]
+                plug_status = car_state["data"]["attributes"]["plugStatus"]
+                if last_plug_status > plug_status:
+                    send_message("Charging stopped")
                     send_message(f"Charge: {battery_status}%")
-                    send_message(
-                        ("Not " if plug_status == 0 else " ") + "Plugged")
-        except BaseException:
-            continue
-    time.sleep(1)
+                    last_plug_status = plug_status
+                if last_plug_status < plug_status:
+                    send_message("Charging started")
+                    send_message(f"Charge: {battery_status}%")
+                    last_plug_status = plug_status
+
+                response = req.json()
+                for message in response["result"]:
+                    offset = message["update_id"] + 1
+                    _chat_id = message["message"]["chat"]["id"]
+                    if _chat_id != chat_id:
+                        continue
+                    text = message["message"]["text"]
+                    if "/charge" in text:
+                        send_message(f"Charge: {battery_status}%")
+                        send_message(
+                            ("Not " if plug_status == 0 else " ") + "Plugged")
+                    if "/info" in text:
+                        totalMileage = car_cockpit["data"]["attributes"]["totalMileage"]
+                        send_message(f"Total Km: {totalMileage}Km")
+                    if "/location" in text:
+                        # location = get_location()
+                        location = {
+                            'data': {
+                                'id': 'VF1RJB00066389033',
+                                'attributes': {
+                                    'lastUpdateTime': '2024-07-19T13:23:08Z',
+                                    'gpsLatitude': 44.383628055555555,
+                                    'gpsLongitude': 7.541928611111111}}}
+                        lon = location["data"]["attributes"]["gpsLongitude"]
+                        lat = location["data"]["attributes"]["gpsLatitude"]
+                        send_message(
+                            f"[Location](https://www.openstreetmap.org/%23map=19/{lat}/{lon})",
+                            parse_mode="MarkdownV2")
+            except BaseException:
+                continue
+        time.sleep(10)
