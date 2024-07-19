@@ -104,9 +104,6 @@ def get_vin():
     return vin
 
 
-session, person_id, account_id, jwt, headers = renault_login()
-vin = get_vin()
-
 # https://renault-api.readthedocs.io/en/latest/endpoints.html#vehicle-data-endpoints
 
 
@@ -155,6 +152,8 @@ def send_message(msg, parse_mode=""):
 
 
 if __name__ == "__main__":
+    session, person_id, account_id, jwt, headers = renault_login()
+    vin = get_vin()
     while True:
         # break
         with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/getUpdates?offset={offset}") as req:
@@ -165,7 +164,7 @@ if __name__ == "__main__":
             try:
                 response = req.json()
                 if (count > 15 * 60 * 1. /
-                        0.5) or (len(response["text"]) > 0):  # every 15 minutes
+                        0.5) or (len(response["result"]) > 0):  # every 15 minutes
                     count = 0
                     try:
                         car_state = get_charging_status()
