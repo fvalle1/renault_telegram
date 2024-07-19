@@ -163,7 +163,6 @@ if __name__ == "__main__":
             try:
                 try:
                     car_state = get_charging_status()
-                    car_cockpit = get_cockpit()
                 except Exception as e:
                     print(e)
                     session, person_id, account_id, jwt, headers = renault_login()
@@ -192,6 +191,7 @@ if __name__ == "__main__":
                         send_message(
                             ("Not " if plug_status == 0 else " ") + "Plugged")
                     if "/info" in text:
+                        car_cockpit = get_cockpit()
                         totalMileage = car_cockpit["data"]["attributes"]["totalMileage"]
                         send_message(f"Total Km: {totalMileage}Km")
                     if "/location" in text:
