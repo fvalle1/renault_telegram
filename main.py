@@ -195,14 +195,7 @@ if __name__ == "__main__":
                         totalMileage = car_cockpit["data"]["attributes"]["totalMileage"]
                         send_message(f"Total Km: {totalMileage}Km")
                     if "/location" in text:
-                        # location = get_location()
-                        location = {
-                            'data': {
-                                'id': 'VF1RJB00066389033',
-                                'attributes': {
-                                    'lastUpdateTime': '2024-07-19T13:23:08Z',
-                                    'gpsLatitude': 44.383628055555555,
-                                    'gpsLongitude': 7.541928611111111}}}
+                        location = get_location()
                         lon = location["data"]["attributes"]["gpsLongitude"]
                         lat = location["data"]["attributes"]["gpsLatitude"]
                         send_message(
