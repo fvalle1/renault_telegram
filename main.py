@@ -162,6 +162,8 @@ if __name__ == "__main__":
                     try:
                         car_state = get_charging_status(session, headers, account_id, vin)
                         car_cockpit = get_cockpit(session, headers, account_id, vin)
+                        battery_status = car_state["data"]["attributes"]["batteryLevel"]
+                        plug_status = car_state["data"]["attributes"]["chargingStatus"]
                     except Exception as e:
                         print(e)
                         session, person_id, account_id, jwt, headers = renault_login()
@@ -172,8 +174,6 @@ if __name__ == "__main__":
                                     }
                         vin = get_vin(session, headers, account_id)
                         continue
-                    battery_status = car_state["data"]["attributes"]["batteryLevel"]
-                    plug_status = car_state["data"]["attributes"]["chargingStatus"]
                     if last_charge_status > plug_status:
                         send_message("Charging stopped")
                         send_message(f"Charge: {battery_status}%")
