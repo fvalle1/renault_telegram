@@ -148,6 +148,8 @@ if __name__ == "__main__":
     session, person_id, account_id, jwt, headers = renault_login()
     vin = get_vin(session, headers, account_id)
     while True:
+        print(count, 5 * 60 * 1. /
+                        0.5)
         # break
         with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/getUpdates?offset={offset}") as req:
             if req.status_code != 200:
@@ -177,7 +179,6 @@ if __name__ == "__main__":
                         continue
                     if last_charge_status > charging_status:
                         send_message("Charging stopped")
-                        send_message(f"Charge: {battery_status}%")
                         last_charge_status = charging_status
                     if last_charge_status < charging_status:
                         send_message("Charging started")
@@ -195,7 +196,10 @@ if __name__ == "__main__":
                                       0 else " ") + "Plugged in")
                     if "/info" in text:
                         totalMileage = car_cockpit["data"]["attributes"]["totalMileage"]
+                        fuelAutonomy = car_cockpit["data"]["attributes"]["fuelAutonomy"]
+                        batteryAutonomy = car_state["data"]["attributes"]["batteryAutonomy"]
                         send_message(f"Total Km: {totalMileage}Km")
+                        send_message(f"Autonomy: [{fuelAutonomy}+{batteryAutonomy}]Km")
                     if "/location" in text:
                         location = get_location(session, headers, account_id, vin)
                         lon = location["data"]["attributes"]["gpsLongitude"]
