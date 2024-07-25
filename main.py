@@ -10,6 +10,7 @@ KEMERON_URL = 'https://api-wired-prod-1-euw1.wrd-aws.com/commerce/v1'
 TELEGRAM_KEY = ""
 LOGINID = ''
 PASSWORD = ''
+CHAT_ID = 
 url = "https://accounts.eu1.gigya.com/accounts.login"
 
 
@@ -135,7 +136,7 @@ def get_location(session, headers, account_id, vin):
 
 offset = 0
 last_charge_status = 0
-chat_id = -4217685043
+chat_id = CHAT_ID
 count = 0
 
 
