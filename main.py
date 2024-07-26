@@ -161,13 +161,13 @@ if __name__ == "__main__":
                 response = req.json()
                 if (count > 15 * 60 * 1. /
                         0.5) or (len(response["result"]) > 0):  # every 15 minutes
-                    count = 0
                     try:
                         car_state = get_charging_status(session, headers, account_id, vin)
                         car_cockpit = get_cockpit(session, headers, account_id, vin)
                         battery_status = car_state["data"]["attributes"]["batteryLevel"]
                         charging_status = car_state["data"]["attributes"]["chargingStatus"]
                         plug_status = car_state["data"]["attributes"]["plugStatus"]
+                        count = 0
                     except Exception as e:
                         print(e)
                         session, person_id, account_id, jwt, headers = renault_login()
