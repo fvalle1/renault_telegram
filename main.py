@@ -178,11 +178,8 @@ if __name__ == "__main__":
                                     }
                         vin = get_vin(session, headers, account_id)
                         continue
-                    if last_charge_status > charging_status:
+                    if last_charge_status != charging_status:
                         send_message("Charging stopped")
-                        last_charge_status = charging_status
-                    if last_charge_status < charging_status:
-                        send_message("Charging started")
                         send_message(f"Charge: {battery_status}%")
                         last_charge_status = charging_status
                 for message in response["result"]:
