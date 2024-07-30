@@ -3,16 +3,15 @@ import requests
 import os
 
 # https://muscatoxblog.blogspot.com/2019/07/delving-into-renaults-new-api.html
-API_KEY = '3_js8th3jdmCWV86fKR3SXQWvXGKbHoWFv8NAgRbH7FnIBsi_XvCpN_rtLcI07uNuq'
-KAMEREON_API_KEY = "YjkKtHmGfaceeuExUDKGxrLZGGvtVS0J"
-BASE_URL = 'https://accounts.eu1.gigya.com'
-KEMERON_URL = 'https://api-wired-prod-1-euw1.wrd-aws.com/commerce/v1'
-TELEGRAM_KEY = ""
-LOGINID = ''
-PASSWORD = ''
-PLATE = ''
-CHAT_ID = 
-url = "https://accounts.eu1.gigya.com/accounts.login"
+API_KEY = os.getenv("API_KEY")
+KAMEREON_API_KEY = os.getenv("KAMEREON_API_KEY")
+BASE_URL = os.getenv("BASE_URL")
+KEMERON_URL = os.getenv("KEMERON_URL")
+TELEGRAM_KEY = os.getenv("TELEGRAM_KEY")
+LOGINID = os.getenv("LOGINID")
+PASSWORD = os.getenv("PASSWORD")
+PLATE = os.getenv("PLATE")
+CHAT_ID = os.getenv("CHAT_ID")
 
 
 def renault_login():
@@ -180,7 +179,7 @@ if __name__ == "__main__":
                         vin = get_vin(session, headers, account_id)
                         continue
                     if last_charge_status != charging_status:
-                        send_message("Charging stopped")
+                        send_message("Charging status update")
                         send_message(f"Charge: {battery_status}%")
                         last_charge_status = charging_status
                 for message in response["result"]:
