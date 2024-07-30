@@ -10,6 +10,7 @@ KEMERON_URL = 'https://api-wired-prod-1-euw1.wrd-aws.com/commerce/v1'
 TELEGRAM_KEY = ""
 LOGINID = ''
 PASSWORD = ''
+PLATE = ''
 CHAT_ID = 
 url = "https://accounts.eu1.gigya.com/accounts.login"
 
@@ -198,6 +199,10 @@ if __name__ == "__main__":
                         batteryAutonomy = car_state["data"]["attributes"]["batteryAutonomy"]
                         send_message(f"Total Km: {totalMileage}Km")
                         send_message(f"Autonomy: [{fuelAutonomy}+{batteryAutonomy}]Km")
+                    if "/vin" in text:   
+                        send_message(f"VIN: {vin}")
+                    if "/plate" in text:   
+                        send_message(f"Plate: {PLATE}")
                     if "/location" in text:
                         location = get_location(session, headers, account_id, vin)
                         lon = location["data"]["attributes"]["gpsLongitude"]
