@@ -11,8 +11,7 @@ TELEGRAM_KEY = os.getenv("TELEGRAM_KEY")
 LOGINID = os.getenv("LOGINID")
 PASSWORD = os.getenv("PASSWORD")
 PLATE = os.getenv("PLATE")
-CHAT_ID = os.getenv("CHAT_ID")
-
+CHAT_ID = int(os.getenv("CHAT_ID"))
 
 def renault_login():
     session = requests.Session()
