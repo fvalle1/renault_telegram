@@ -13,6 +13,7 @@ PASSWORD = os.getenv("PASSWORD")
 PLATE = os.getenv("PLATE")
 CHAT_ID = int(os.getenv("CHAT_ID"))
 
+
 def renault_login():
     session = requests.Session()
 
@@ -135,6 +136,7 @@ def get_location(session, headers, account_id, vin):
 
 offset = 0
 last_charge_status = 0
+charging_status = None
 chat_id = CHAT_ID
 count = 0
 
@@ -145,12 +147,14 @@ def send_message(msg, parse_mode=""):
 
 
 if __name__ == "__main__":
+    print("Starting process")
     session, person_id, account_id, jwt, headers = renault_login()
+    print("session started")
     vin = get_vin(session, headers, account_id)
     while True:
         print(count, 5 * 60 * 1. /
-                        0.5)
-        # break
+              0.5)
+        print(last_charge_status, charging_status)
         with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/getUpdates?offset={offset}") as req:
             if req.status_code != 200:
                 print(f"Error {req.text}")
@@ -158,29 +162,38 @@ if __name__ == "__main__":
                 continue
             try:
                 response = req.json()
-                if (count > 15 * 60 * 1. /
-                        0.5) or (len(response["result"]) > 0):  # every 15 minutes
+                has_new_messages = len(response["result"]) > 0
+                if (count > 5 * 60 * 1. /
+                        0.5) or (has_new_messages):  # every 5 minutes
                     try:
-                        car_state = get_charging_status(session, headers, account_id, vin)
-                        car_cockpit = get_cockpit(session, headers, account_id, vin)
+                        car_state = get_charging_status(
+                            session, headers, account_id, vin)
+                        car_cockpit = get_cockpit(
+                            session, headers, account_id, vin)
                         battery_status = car_state["data"]["attributes"]["batteryLevel"]
-                        charging_status = car_state["data"]["attributes"]["chargingStatus"]
+                        charging_status = int(
+                            round(
+                                10 *
+                                float(
+                                    car_state["data"]["attributes"]["chargingStatus"])))
                         plug_status = car_state["data"]["attributes"]["plugStatus"]
                         count = 0
                     except Exception as e:
                         print(e)
                         session, person_id, account_id, jwt, headers = renault_login()
                         headers = {
-                                        'Content-Type': 'application/vnd.api+json',
-                                        'apikey': KAMEREON_API_KEY,
-                                        'x-gigya-id_token': jwt,
-                                    }
+                            'Content-Type': 'application/vnd.api+json',
+                            'apikey': KAMEREON_API_KEY,
+                            'x-gigya-id_token': jwt,
+                        }
                         vin = get_vin(session, headers, account_id)
                         continue
                     if last_charge_status != charging_status:
-                        send_message("Charging status update")
-                        send_message(f"Charge: {battery_status}%")
+                        if not has_new_messages:
+                            send_message("Charging status update")
+                            send_message(f"Charge: {battery_status}%")
                         last_charge_status = charging_status
+                        count = 0
                 for message in response["result"]:
                     offset = message["update_id"] + 1
                     _chat_id = message["message"]["chat"]["id"]
@@ -196,13 +209,15 @@ if __name__ == "__main__":
                         fuelAutonomy = car_cockpit["data"]["attributes"]["fuelAutonomy"]
                         batteryAutonomy = car_state["data"]["attributes"]["batteryAutonomy"]
                         send_message(f"Total Km: {totalMileage}Km")
-                        send_message(f"Autonomy: [{fuelAutonomy}+{batteryAutonomy}]Km")
-                    if "/vin" in text:   
+                        send_message(
+                            f"Autonomy: [{fuelAutonomy}+{batteryAutonomy}]Km")
+                    if "/vin" in text:
                         send_message(f"VIN: {vin}")
-                    if "/plate" in text:   
+                    if "/plate" in text:
                         send_message(f"Plate: {PLATE}")
                     if "/location" in text:
-                        location = get_location(session, headers, account_id, vin)
+                        location = get_location(
+                            session, headers, account_id, vin)
                         lon = location["data"]["attributes"]["gpsLongitude"]
                         lat = location["data"]["attributes"]["gpsLatitude"]
                         send_message(
