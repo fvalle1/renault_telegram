@@ -158,7 +158,7 @@ if __name__ == "__main__":
         with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/getUpdates?offset={offset}") as req:
             if req.status_code != 200:
                 print(f"Error {req.text}")
-                time.sleep(5)
+                time.sleep(60)
                 continue
             try:
                 response = req.json()
