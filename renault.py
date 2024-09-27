@@ -15,6 +15,7 @@ CHAT_ID = int(os.getenv("CHAT_ID"))
 
 
 def renault_login():
+    global API_KEY, KAMEREON_API_KEY, BASE_URL, KEMERON_URL, LOGINID, PASSWORD
     session = requests.Session()
 
     payload = {'ApiKey': API_KEY,
@@ -83,6 +84,7 @@ def renault_login():
 
 
 def get_vin(session, headers, account_id):
+    global KEMERON_URL
     response = session.request(
         "GET",
         KEMERON_URL +
@@ -102,6 +104,7 @@ def get_vin(session, headers, account_id):
 
 
 def get_charging_status(session, headers, account_id, vin):
+    global KEMERON_URL
     response = session.request(
         "GET",
         KEMERON_URL +
@@ -113,6 +116,7 @@ def get_charging_status(session, headers, account_id, vin):
 
 
 def get_cockpit(session, headers, account_id, vin):
+    global KEMERON_URL
     response = session.request(
         "GET",
         KEMERON_URL +
@@ -134,28 +138,32 @@ def get_location(session, headers, account_id, vin):
     return response.json()
 
 
-offset = 0
-last_charge_status = 0
-charging_status = None
-chat_id = CHAT_ID
-count = 0
 
 
 def send_message(msg, parse_mode=""):
-    with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/sendMessage?chat_id={chat_id}&text={msg}&parse_mode={parse_mode}") as req:
+    global TELEGRAM_KEY, CHAT_ID
+    with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode={parse_mode}") as req:
         print(req.text)
 
 
-if __name__ == "__main__":
+def run():
+    global API_KEY, KAMEREON_API_KEY, BASE_URL, KEMERON_URL, TELEGRAM_KEY, LOGINID, PASSWORD, PLATE, CHAT_ID
     print("Starting process")
+    offset = 0
+    last_charge_status = 0
+    charging_status = None
+    chat_id = CHAT_ID
+    print(chat_id)
+    count = 0
     session, person_id, account_id, jwt, headers = renault_login()
     print("session started")
     vin = get_vin(session, headers, account_id)
     while True:
         print(count, 5 * 60 * 1. /
-              0.5)
+              1)
         print(last_charge_status, charging_status)
         with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/getUpdates?offset={offset}") as req:
+            print(req.text)
             if req.status_code != 200:
                 print(f"Error {req.text}")
                 time.sleep(60)
@@ -164,7 +172,7 @@ if __name__ == "__main__":
                 response = req.json()
                 has_new_messages = len(response["result"]) > 0
                 if (count > 5 * 60 * 1. /
-                        0.5) or (has_new_messages):  # every 5 minutes
+                      1) or (has_new_messages):  # every 5 minutes
                     try:
                         car_state = get_charging_status(
                             session, headers, account_id, vin)
@@ -223,7 +231,17 @@ if __name__ == "__main__":
                         send_message(
                             f"[Location](https://www.openstreetmap.org/%23map=19/{lat}/{lon})",
                             parse_mode="MarkdownV2")
-            except BaseException:
+            except BaseException as e:
+                print(e)
                 continue
         count += 1
-        time.sleep(0.5)
+        time.sleep(1)
+
+
+if __name__=="__main__":
+    while True:
+        try:
+            run()
+        except Exception as e:
+            print(e)
+            time.sleep(120)
