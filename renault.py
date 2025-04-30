@@ -229,7 +229,7 @@ def run():
                         lon = location["data"]["attributes"]["gpsLongitude"]
                         lat = location["data"]["attributes"]["gpsLatitude"]
                         send_message(
-                            f"[Location](https://www.openstreetmap.org/%23map=19/{lat}/{lon})",
+                            f"[Location](https://www.openstreetmap.org/%3Fzoom=19%26mlat={lat}%26mlon={lon})",
                             parse_mode="MarkdownV2")
             except BaseException as e:
                 print(e)
