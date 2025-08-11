@@ -241,7 +241,7 @@ def run():
                             parse_mode="MarkdownV2")
                         OLC = olc_encode(lat, lon, 10)
                         send_message(
-                            f"<b>{OLC[:SEPARATOR_POSITION_]}%2B{OLC[SEPARATOR_POSITION_:]}</b>",
+                            f"<b>{OLC[:SEPARATOR_POSITION_]}%2B{OLC[SEPARATOR_POSITION_+1:]}</b>",
                             parse_mode="HTML",
                         )
                     if "/w3w" in text:
