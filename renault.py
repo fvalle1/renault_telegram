@@ -1,6 +1,8 @@
 import time
 import requests
 import os
+from openlocationcode import encode as olc_encode
+from openlocationcode import SEPARATOR_POSITION_
 
 # https://muscatoxblog.blogspot.com/2019/07/delving-into-renaults-new-api.html
 API_KEY = os.getenv("API_KEY")
@@ -12,6 +14,7 @@ LOGINID = os.getenv("LOGINID")
 PASSWORD = os.getenv("PASSWORD")
 PLATE = os.getenv("PLATE")
 CHAT_ID = int(os.getenv("CHAT_ID"))
+PING_URL = os.getenv("PING_URL")
 
 
 def renault_login():
@@ -138,8 +141,6 @@ def get_location(session, headers, account_id, vin):
     return response.json()
 
 
-
-
 def send_message(msg, parse_mode=""):
     global TELEGRAM_KEY, CHAT_ID
     with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode={parse_mode}") as req:
@@ -162,6 +163,12 @@ def run():
         print(count, 5 * 60 * 1. /
               1)
         print(last_charge_status, charging_status)
+        with requests.get(PING_URL) as req:
+            if req.status_code != 200:
+                print(f"Error {req.text}")
+                time.sleep(60)
+                continue
+            print("Ping OK")
         with requests.get(f"https://api.telegram.org/bot{TELEGRAM_KEY}/getUpdates?offset={offset}") as req:
             print(req.text)
             if req.status_code != 200:
@@ -208,6 +215,7 @@ def run():
                     if _chat_id != chat_id:
                         continue
                     text = message["message"]["text"]
+                    print(text)
                     if "/charge" in text:
                         send_message(f"Charge: {battery_status}%")
                         send_message(("Not " if plug_status ==
@@ -231,6 +239,31 @@ def run():
                         send_message(
                             f"[Location](https://www.openstreetmap.org/%3Fzoom=19%26mlat={lat}%26mlon={lon})",
                             parse_mode="MarkdownV2")
+                        OLC = olc_encode(lat, lon, 10)
+                        send_message(
+                            f"<b>{OLC[:SEPARATOR_POSITION_]}%2B{OLC[SEPARATOR_POSITION_:]}</b>",
+                            parse_mode="HTML",
+                        )
+                    if "/w3w" in text:
+                        location = get_location(
+                            session, headers, account_id, vin)
+                        lon = location["data"]["attributes"]["gpsLongitude"]
+                        lat = location["data"]["attributes"]["gpsLatitude"]
+                        w3w_url = f"https://api.what3words.com/v3/convert-to-3wa?coordinates={lat},{lon}"
+                        with requests.get(w3w_url, headers={
+                            "x-api-key": os.getenv("W3W_KEY"),
+                            "format": "json"
+                            }) as w3w_req:
+                            if w3w_req.status_code == 200:
+                                w3w_data = w3w_req.json()
+                                print(w3w_data)
+                                w3w_data = w3w_data["words"].split(".")
+                                send_message(
+                                    f"*[{w3w_data[0]}\\.{w3w_data[1]}\\.{w3w_data[2]}](https://w3w.co/{w3w_data[0]}\\.{w3w_data[1]}\\.{w3w_data[2]})*",
+                                    parse_mode="MarkdownV2",
+                                )
+                            else:
+                                send_message("Error fetching W3W data")
             except BaseException as e:
                 print(e)
                 continue

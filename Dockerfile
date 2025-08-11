@@ -5,6 +5,7 @@ COPY requirements.txt /app/requirements.txt
 
 RUN python3 -m pip install -r /app/requirements.txt
 
+COPY openlocationcode.py /app/openlocationcode.py
 COPY renault.py /app/.
 
 ENTRYPOINT [ "python3", "/app/renault.py"]
