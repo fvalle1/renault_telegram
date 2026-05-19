@@ -27,7 +27,13 @@ def renault_login():
     response = session.request(
         "POST", BASE_URL + "/accounts.login", headers=headers, data=payload, files=files
     )
-    sessionCookie = response.json()["sessionInfo"]["cookieValue"]
+    try:
+        sessionCookie = response.json()["sessionInfo"]["cookieValue"]
+    except KeyError:
+        print("Error: Failed to retrieve session cookie: ")
+        print(response.text)
+        return None, None, None, None, None
+    
     print(f"Cookie: {sessionCookie}")
 
     payload = {
@@ -45,6 +51,7 @@ def renault_login():
         data=payload,
         files=files,
     )
+    print(f"Account info response: {response.text}")
     person_id = response.json()["data"]["personId"]
 
     print(f"person ID: {person_id}")
@@ -206,9 +213,9 @@ def run():
                         vin = get_vin(session, headers, account_id)
                         continue
                     if last_charge_status != charging_status:
-                        if not has_new_messages:
-                            send_message("Charging status update")
-                            send_message(f"Charge: {battery_status}%")
+                        # if not has_new_messages:
+                        #     send_message("Charging status update")
+                        #     send_message(f"Charge: {battery_status}%")
                         last_charge_status = charging_status
                         count = 0
                 for message in response["result"]:
@@ -258,6 +265,9 @@ def run():
                             headers={
                                 "x-api-key": os.getenv("W3W_KEY"),
                                 "format": "json",
+                                "Referer": "https://developer.what3words.com/",
+                                "Origin": "https://developer.what3words.com",
+                                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Version/18.6 Safari/605.1.15 Ddg/18.6",
                             },
                         ) as w3w_req:
                             if w3w_req.status_code == 200:
