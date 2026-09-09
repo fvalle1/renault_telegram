@@ -15,73 +15,152 @@ PASSWORD = os.getenv("PASSWORD")
 PLATE = os.getenv("PLATE")
 CHAT_ID = int(os.getenv("CHAT_ID"))
 PING_URL = os.getenv("PING_URL")
+# Optional: a fresh 2FA code already known when the process starts (e.g. set right
+# after reading it from email). Usually the code will instead arrive later via the
+# /2fa Telegram command, since the code doesn't exist until we trigger the email.
+TFA_CODE = os.getenv("TFA_CODE")
+
+# Reused across reconnects (instead of a fresh requests.Session() each time) so that
+# Gigya's "remember this device" cookies survive, which avoids re-triggering 2FA on
+# every reconnect within the same run. See https://github.com/hacf-fr/renault-api/issues/2132
+_gigya_session = requests.Session()
 
 
-def renault_login():
-    global API_KEY, KAMEREON_API_KEY, BASE_URL, KEMERON_URL, LOGINID, PASSWORD
-    session = requests.Session()
-
-    payload = {"ApiKey": API_KEY, "loginID": LOGINID, "password": PASSWORD}
-    files = []
-    headers = {}
-    response = session.request(
-        "POST", BASE_URL + "/accounts.login", headers=headers, data=payload, files=files
-    )
-    try:
-        sessionCookie = response.json()["sessionInfo"]["cookieValue"]
-    except KeyError:
-        print("Error: Failed to retrieve session cookie: ")
-        print(response.text)
-        return None, None, None, None, None
-    
-    print(f"Cookie: {sessionCookie}")
-
-    payload = {
-        "login_token": sessionCookie,
-        "ApiKey": API_KEY,
-        "fields": "data.personId,data.gigyaDataCenter",
-    }
-    files = []
-    headers = {}
+def start_tfa(session, reg_token):
+    """Kick off Renault/Gigya's email-OTP 2FA challenge: sends a code to the account's
+    registered email and returns the state needed to complete it once the code is known."""
+    global API_KEY
+    session.request("GET", BASE_URL + "/accounts.webSdkBootstrap", params={"APIKey": API_KEY})
+    ucid = session.cookies.get("ucid", "")
+    gmid = session.cookies.get("gmid", "")
 
     response = session.request(
         "GET",
-        BASE_URL + "/accounts.getAccountInfo",
-        headers=headers,
-        data=payload,
-        files=files,
+        BASE_URL + "/accounts.tfa.initTFA",
+        params={
+            "provider": "gigyaEmail",
+            "mode": "verify",
+            "regToken": reg_token,
+            "APIKey": API_KEY,
+            "ucid": ucid,
+            "gmid": gmid,
+        },
     )
+    gigya_assertion = response.json()["gigyaAssertion"]
+
+    response = session.request(
+        "GET",
+        BASE_URL + "/accounts.tfa.email.getEmails",
+        params={"gigyaAssertion": gigya_assertion, "APIKey": API_KEY},
+    )
+    email_id = response.json()["emails"][0]["id"]
+
+    response = session.request(
+        "GET",
+        BASE_URL + "/accounts.tfa.email.sendVerificationCode",
+        params={"emailID": email_id, "gigyaAssertion": gigya_assertion, "APIKey": API_KEY},
+    )
+    phv_token = response.json()["phvToken"]
+
+    return {"regToken": reg_token, "gigyaAssertion": gigya_assertion, "phvToken": phv_token}
+
+
+def complete_tfa(session, tfa_state, code):
+    """Submit the emailed OTP code to finish the 2FA challenge. Raises ValueError on an
+    invalid/expired code. Caller must re-POST accounts.login afterwards to get the cookie."""
+    global API_KEY
+    response = session.request(
+        "GET",
+        BASE_URL + "/accounts.tfa.email.completeVerification",
+        params={
+            "gigyaAssertion": tfa_state["gigyaAssertion"],
+            "phvToken": tfa_state["phvToken"],
+            "code": code,
+            "APIKey": API_KEY,
+        },
+    )
+    data = response.json()
+    if "providerAssertion" not in data:
+        raise ValueError(f"Invalid or expired 2FA code: {data}")
+
+    response = session.request(
+        "GET",
+        BASE_URL + "/accounts.tfa.finalizeTFA",
+        params={
+            "gigyaAssertion": tfa_state["gigyaAssertion"],
+            "providerAssertion": data["providerAssertion"],
+            "tempDevice": "false",
+            "regToken": tfa_state["regToken"],
+            "APIKey": API_KEY,
+        },
+    )
+    if response.json().get("errorCode", -1) != 0:
+        raise ValueError(f"2FA finalization failed: {response.json()}")
+
+
+def _finish_login(session, session_cookie):
+    """Given a session with a valid Gigya login cookie, fetch the person id, mint a JWT
+    and resolve the Kamereon account id. Shared by the plain and post-2FA login paths."""
+    global API_KEY, KAMEREON_API_KEY, KEMERON_URL
+    payload = {"login_token": session_cookie, "ApiKey": API_KEY}
+
+    response = session.request("GET", BASE_URL + "/accounts.getAccountInfo", data=payload)
     print(f"Account info response: {response.text}")
     person_id = response.json()["data"]["personId"]
 
-    print(f"person ID: {person_id}")
-
-    response = session.request(
-        "GET", BASE_URL + "/accounts.getJWT", headers=headers, data=payload, files=files
-    )
+    jwt_payload = {**payload, "fields": "data.personId,data.gigyaDataCenter", "expiration": 900}
+    response = session.request("GET", BASE_URL + "/accounts.getJWT", data=jwt_payload)
     jwt = response.json()["id_token"]
 
-    print(f"JWT: {jwt}")
-
-    headers = {}
-    payload = {}
     headers = {
         "Content-Type": "application/vnd.api+json",
         "apikey": KAMEREON_API_KEY,
         "x-gigya-id_token": jwt,
     }
-
     response = session.request(
-        "GET",
-        KEMERON_URL + f"/persons/{person_id}?country=IT",
-        headers=headers,
-        data=payload,
+        "GET", KEMERON_URL + f"/persons/{person_id}?country=IT", headers=headers, data={}
     )
-
-    print(response.json()["accounts"][0])
+    print(response.text)
     account_id = response.json()["accounts"][0]["accountId"]
 
     return session, person_id, account_id, jwt, headers
+
+
+def renault_login(tfa_code=None):
+    """Log in to Renault/Gigya. Returns (session, person_id, account_id, jwt, headers, tfa_state).
+    On success tfa_state is None. If Renault/Gigya demands 2FA (errorCode 403101, see
+    https://github.com/hacf-fr/renault-api/issues/2132) and it can't be resolved immediately,
+    person_id/account_id/jwt/headers are None and tfa_state is returned so the caller can
+    complete it later (via TFA_CODE or the /2fa command) by calling complete_tfa() + retrying."""
+    global API_KEY, LOGINID, PASSWORD, _gigya_session
+    session = _gigya_session
+
+    payload = {"ApiKey": API_KEY, "loginID": LOGINID, "password": PASSWORD}
+    response = session.request("POST", BASE_URL + "/accounts.login", data=payload)
+    data = response.json()
+
+    if data.get("errorCode") == 403101:
+        print("Renault/Gigya requires 2FA verification")
+        tfa_state = start_tfa(session, data["regToken"])
+        if tfa_code:
+            try:
+                complete_tfa(session, tfa_state, tfa_code)
+                response = session.request("POST", BASE_URL + "/accounts.login", data=payload)
+                sessionCookie = response.json()["sessionInfo"]["cookieValue"]
+                return (*_finish_login(session, sessionCookie), None)
+            except Exception as e:
+                print(f"TFA_CODE failed, falling back to interactive 2FA: {e}")
+        return session, None, None, None, None, tfa_state
+
+    try:
+        sessionCookie = data["sessionInfo"]["cookieValue"]
+    except KeyError:
+        print("Error: Failed to retrieve session cookie: ")
+        print(response.text)
+        return None, None, None, None, None, None
+
+    print(f"Cookie: {sessionCookie}")
+    return (*_finish_login(session, sessionCookie), None)
 
 
 def get_vin(session, headers, account_id):
@@ -162,9 +241,15 @@ def run():
     chat_id = CHAT_ID
     print(chat_id)
     count = 0
-    session, person_id, account_id, jwt, headers = renault_login()
+    session, person_id, account_id, jwt, headers, tfa_state = renault_login(tfa_code=TFA_CODE)
     print("session started")
-    vin = get_vin(session, headers, account_id)
+    vin = get_vin(session, headers, account_id) if account_id else None
+    print(f"vin: {vin}")
+    if tfa_state:
+        send_message(
+            "Renault login needs 2FA: check your email for the code, "
+            "then reply with /2fa <code>"
+        )
     while True:
         print(count, 5 * 60 * 1.0 / 1)
         print(last_charge_status, charging_status)
@@ -185,7 +270,9 @@ def run():
             try:
                 response = req.json()
                 has_new_messages = len(response["result"]) > 0
-                if (count > 5 * 60 * 1.0 / 1) or (has_new_messages):  # every 5 minutes
+                if account_id and (
+                    (count > 5 * 60 * 1.0 / 1) or (has_new_messages)
+                ):  # every 5 minutes
                     try:
                         car_state = get_charging_status(
                             session, headers, account_id, vin
@@ -204,12 +291,13 @@ def run():
                         count = 0
                     except Exception as e:
                         print(e)
-                        session, person_id, account_id, jwt, headers = renault_login()
-                        headers = {
-                            "Content-Type": "application/vnd.api+json",
-                            "apikey": KAMEREON_API_KEY,
-                            "x-gigya-id_token": jwt,
-                        }
+                        session, person_id, account_id, jwt, headers, tfa_state = renault_login()
+                        if tfa_state:
+                            send_message(
+                                "Renault login needs 2FA: check your email for the "
+                                "code, then reply with /2fa <code>"
+                            )
+                            continue
                         vin = get_vin(session, headers, account_id)
                         continue
                     if last_charge_status != charging_status:
@@ -225,6 +313,40 @@ def run():
                         continue
                     text = message["message"]["text"]
                     print(text)
+                    if "/2fa" in text:
+                        if not tfa_state:
+                            send_message("No 2FA verification is pending.")
+                            continue
+                        code = text.replace("/2fa", "").strip()
+                        try:
+                            complete_tfa(session, tfa_state, code)
+                            # The 2FA challenge itself is now resolved (single-use code
+                            # consumed) - clear it even if what follows below fails, so a
+                            # retry doesn't try to replay an already-spent code.
+                            tfa_state = None
+                            payload = {
+                                "ApiKey": API_KEY,
+                                "loginID": LOGINID,
+                                "password": PASSWORD,
+                            }
+                            resp = session.request(
+                                "POST", BASE_URL + "/accounts.login", data=payload
+                            )
+                            sessionCookie = resp.json()["sessionInfo"]["cookieValue"]
+                            session, person_id, account_id, jwt, headers = _finish_login(
+                                session, sessionCookie
+                            )
+                            vin = get_vin(session, headers, account_id)
+                            send_message("2FA verified, bot is now connected to the car.")
+                        except Exception as e:
+                            send_message(f"2FA verification failed: {e}")
+                        continue
+                    if not account_id:
+                        send_message(
+                            "Not connected to the car yet."
+                            + (" Send /2fa <code>." if tfa_state else "")
+                        )
+                        continue
                     if "/charge" in text:
                         send_message(f"Charge: {battery_status}%")
                         send_message(
